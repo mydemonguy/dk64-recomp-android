@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write  # publish the APK as a release + `apk` branch
 
 jobs:
   build-apk:
@@ -152,3 +152,27 @@ jobs:
           name: dk64recomp-revvl8-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      # Easy phone download: a release (tag `latest-apk`, shown under Releases
+      # in the GitHub app) with the APK attached, plus an `apk` branch holding
+      # only the APK file. Both are replaced on every build.
+      - name: Publicar APK (release latest-apk + branch apk)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -m1 'versionName = ' android/app/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          NAME="DK64-Recomp-Revvl8.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$NAME"
+          gh release delete latest-apk --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create latest-apk "$NAME" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "DK64 Recomp (Revvl 8) ${VERSION}-revvl8" \
+            --notes "Built from ${GITHUB_SHA::7} (run ${GITHUB_RUN_NUMBER}). Download ${NAME} below and open it to install."
+          mkdir apk-branch
+          cp "$NAME" apk-branch/
+          cd apk-branch
+          git init -q
+          git add "$NAME"
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "APK from ${GITHUB_SHA::7} (run ${GITHUB_RUN_NUMBER})"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/apk
