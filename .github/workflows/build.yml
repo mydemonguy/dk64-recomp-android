@@ -52,18 +52,31 @@ jobs:
           GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${GH_TOKEN}" ]; then
-            echo "::error::Secret PRIVATE_REPO_TOKEN ausente — crie um PAT com acesso de leitura ao repo privado de inputs e defina o secret (ver scripts/setup-build-inputs-repo.sh)."
-            exit 1
+          mkdir -p rom-input
+          # Option A: a PRIVATE copy of this repo with the ROM committed under
+          # rom/ (never do this in a public repo). Option B: the ROM is a
+          # release asset (tag `build-inputs`) of the PRIVATE repo
+          # <owner>/dk64-recomp-build-inputs, read with secret PRIVATE_REPO_TOKEN.
+          # Either way any .z64/.n64/.v64, loose or zipped, works:
+          # prepare_rom.py converts it to .z64 and checks the sha1.
+          if [ -d rom ] && [ -n "$(ls -A rom 2>/dev/null)" ]; then
+            if [ "${{ github.event.repository.private }}" != "true" ]; then
+              echo "::error::rom/ is committed in a PUBLIC repository. Remove it."
+              exit 1
+            fi
+            ROM_DIR=rom
+          else
+            if [ -z "${GH_TOKEN}" ]; then
+              echo "::error::Secret PRIVATE_REPO_TOKEN ausente — crie um PAT com acesso de leitura ao repo privado de inputs e defina o secret (ver scripts/setup-build-inputs-repo.sh)."
+              exit 1
+            fi
+            INPUTS_REPO="${{ github.repository_owner }}/dk64-recomp-build-inputs"
+            mkdir -p rom-download
+            gh release download build-inputs --repo "$INPUTS_REPO" --dir rom-download --clobber
+            ROM_DIR=rom-download
           fi
-          # ROM comes from the PRIVATE repo <owner>/dk64-recomp-build-inputs,
-          # release tag `build-inputs`. Any asset works: .z64/.n64/.v64, loose
-          # or zipped; prepare_rom.py converts it to .z64 and checks the sha1.
-          INPUTS_REPO="${{ github.repository_owner }}/dk64-recomp-build-inputs"
-          mkdir -p rom-download rom-input
-          gh release download build-inputs --repo "$INPUTS_REPO" --dir rom-download --clobber
-          ls -la rom-download
-          python3 -I scripts/prepare_rom.py rom-download rom-input/baserom.us.z64
+          ls -la "$ROM_DIR"
+          python3 -I scripts/prepare_rom.py "$ROM_DIR" rom-input/baserom.us.z64
 
       - name: Build N64Recomp & RSPRecomp (host)
         run: |
