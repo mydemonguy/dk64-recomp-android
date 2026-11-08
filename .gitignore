@@ -90,3 +90,6 @@ android/local.properties
 android/.idea/
 *.apk
 *.aab
+
+# Android debug source set (build-type resources), not a build output
+!android/app/src/debug/

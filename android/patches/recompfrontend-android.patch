@@ -166,6 +166,37 @@ index 19f761c..5918e23 100644
  #elif defined(__linux__)
      std::string command = "xdg-open \"" + mods_directory.string() + "\" &";
      std::system(command.c_str());
+diff --git a/recompui/src/config/ui_config_tab_graphics.cpp b/recompui/src/config/ui_config_tab_graphics.cpp
+index 4fdf81f..9e52a52 100644
+--- a/recompui/src/config/ui_config_tab_graphics.cpp
++++ b/recompui/src/config/ui_config_tab_graphics.cpp
+@@ -304,7 +304,13 @@ namespace recompui {
+                 "Framerate",
+                 get_framerate_text(60),
+                 refresh_rate_options,
++#if defined(__ANDROID__)
++                // Phones often have 90/120 Hz panels: running at the display rate
++                // doubles GPU/CPU load and heat. Default to a 60 fps cap instead.
++                ultramodern::renderer::RefreshRate::Manual
++#else
+                 ultramodern::renderer::RefreshRate::Display
++#endif
+             );
+ 
+             config.add_number_option(
+@@ -330,7 +336,12 @@ namespace recompui {
+                 "<br />"
+                 "<recomp-color primary>Note: This option won't be available if your GPU does not support programmable MSAA sample positions, as it is currently required to avoid rendering glitches.</recomp-color>",
+                 antialiasing_options,
++#if defined(__ANDROID__)
++                // MSAA costs bandwidth on mobile GPUs; leave it opt-in on Android.
++                ultramodern::renderer::Antialiasing::None
++#else
+                 ultramodern::renderer::Antialiasing::MSAA2X
++#endif
+             );
+ 
+             config.add_enum_option(
 diff --git a/recompui/src/util/file.cpp b/recompui/src/util/file.cpp
 index 7ee84ed..a101344 100644
 --- a/recompui/src/util/file.cpp

@@ -17,8 +17,8 @@ android {
         applicationId = "com.deivid22srk.dk64recomp"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.0.3-android"
+        versionCode = 5
+        versionName = "1.0.5-android"
 
         ndk {
             // 64-bit apenas (decisão do usuário: memória e tempo de build)
@@ -48,6 +48,16 @@ android {
     }
 
     signingConfigs {
+        // Fixed debug key committed to the repo: every CI build is signed with
+        // the same key, so a new APK installs over the previous one (keeping
+        // saves) instead of failing with "package conflicts". The CI runner
+        // would otherwise generate a fresh ~/.android/debug.keystore each run.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         // Assinatura de release usada no CI (release.yml): o workflow decodifica
         // a keystore (secret ANDROID_RELEASE_KEYSTORE_B64) para um arquivo e
         // informa o CAMINHO via env ANDROID_RELEASE_KEYSTORE_FILE (+ senhas e
@@ -75,6 +85,11 @@ android {
 
     buildTypes {
         debug {
+            // Installs next to the official release instead of clashing with
+            // it (different signing key). Matching shortcuts.xml/app_name live
+            // in src/debug/res.
+            applicationIdSuffix = ".revvl8"
+            versionNameSuffix = "-revvl8"
             isJniDebuggable = true
             isMinifyEnabled = false
         }

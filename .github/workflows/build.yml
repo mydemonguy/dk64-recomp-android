@@ -56,23 +56,14 @@ jobs:
             echo "::error::Secret PRIVATE_REPO_TOKEN ausente — crie um PAT com acesso de leitura ao repo privado de inputs e defina o secret (ver scripts/setup-build-inputs-repo.sh)."
             exit 1
           fi
-          mkdir -p rom-input
-          gh release download build-inputs --repo deivid22srk/dk64-recomp-build-inputs \
-            --pattern 'Donkey.Kong.64.zip' --output rom-input/Donkey.Kong.64.zip --clobber
-          cd rom-input
-          unzip -o Donkey.Kong.64.zip
-          ROMS=$(find . -maxdepth 2 -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' | wc -l)
-          if [ "$ROMS" -ne 1 ]; then
-            echo "::error::Esperava exatamente 1 ROM no zip, achei $ROMS"
-            exit 1
-          fi
-          ROM_FILE=$(find . -maxdepth 2 -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' | head -1)
-          SHA1=$(sha1sum "$ROM_FILE" | cut -d' ' -f1)
-          echo "ROM sha1: $SHA1"
-          if [ "$SHA1" != "cf806ff2603640a748fca5026ded28802f1f4a50" ]; then
-            echo "::error::ROM incorreta (esperado NTSC-U 1.0, sha1 cf806ff2...)"
-            exit 1
-          fi
+          # ROM comes from the PRIVATE repo <owner>/dk64-recomp-build-inputs,
+          # release tag `build-inputs`. Any asset works: .z64/.n64/.v64, loose
+          # or zipped; prepare_rom.py converts it to .z64 and checks the sha1.
+          INPUTS_REPO="${{ github.repository_owner }}/dk64-recomp-build-inputs"
+          mkdir -p rom-download rom-input
+          gh release download build-inputs --repo "$INPUTS_REPO" --dir rom-download --clobber
+          ls -la rom-download
+          python3 -I scripts/prepare_rom.py rom-download rom-input/baserom.us.z64
 
       - name: Build N64Recomp & RSPRecomp (host)
         run: |
@@ -145,6 +136,6 @@ jobs:
       - name: Upload do APK
         uses: actions/upload-artifact@v4
         with:
-          name: dk64recomp-android-debug
+          name: dk64recomp-revvl8-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

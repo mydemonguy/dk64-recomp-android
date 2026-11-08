@@ -771,6 +771,118 @@ void show_android_gpu_driver_menu() {
         request_app_restart_after_delay(800);
     }
 }
+
+/*
+ * Graphics Mode (shader path on the proprietary Qualcomm driver).
+ *
+ * plume only applies the Adreno 6xx shader workarounds (no uber shaders, no
+ * flat varyings, no dual source blending) when DK64_QCOM_SHADER_MODE asks for
+ * it or, in auto mode, when the GPU is older than the Adreno 710. Newer GPUs
+ * keep the fast path, which avoids hitches while new shaders compile. If a
+ * GPU/driver combination turns out to need the workarounds anyway (missing or
+ * broken geometry), the user can force them from here without a rebuild.
+ * The choice lives in files/graphics_mode.txt and is read in main() before
+ * the renderer starts, so changing it restarts the app.
+ */
+namespace {
+std::filesystem::path graphics_mode_path() {
+    return std::filesystem::path(androidport::internal_files_dir()) / "graphics_mode.txt";
+}
+
+std::string read_graphics_mode() {
+    std::string mode;
+    if (FILE *f = fopen(graphics_mode_path().c_str(), "rb")) {
+        char buf[16]{};
+        size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+        fclose(f);
+        mode.assign(buf, n);
+        while (!mode.empty() && (mode.back() == '\n' || mode.back() == '\r' || mode.back() == ' ')) {
+            mode.pop_back();
+        }
+    }
+    if (mode != "safe" && mode != "fast") {
+        mode = "auto";
+    }
+    return mode;
+}
+
+bool write_graphics_mode(const std::string &mode) {
+    FILE *f = fopen(graphics_mode_path().c_str(), "wb");
+    if (f == nullptr) {
+        return false;
+    }
+    bool ok = fwrite(mode.data(), 1, mode.size(), f) == mode.size();
+    ok = (fclose(f) == 0) && ok;
+    return ok;
+}
+
+void apply_graphics_mode_env() {
+    if (androidport::internal_files_dir().empty()) {
+        return;
+    }
+    const std::string mode = read_graphics_mode();
+    SDL_setenv("DK64_QCOM_SHADER_MODE", mode.c_str(), 1);
+    fprintf(stderr, "Graphics Mode: %s\n", mode.c_str());
+}
+} // namespace
+
+void show_android_graphics_mode_menu() {
+    const std::string current = read_graphics_mode();
+    const char *current_label =
+        (current == "safe") ? "Compatibility" :
+        (current == "fast") ? "Fast" : "Auto";
+
+    const std::string message = std::string("Current: ") + current_label + "\n\n"
+        "Auto: fast shaders on Adreno 710 and newer, compatibility shaders on older Adreno GPUs.\n\n"
+        "Fast: always use the fast shader path (fewer stutters).\n\n"
+        "Compatibility: use the workarounds made for Adreno 6xx drivers. "
+        "Pick this if geometry or effects are missing or broken.\n\n"
+        "This only affects the stock Qualcomm driver. Changing it restarts the app.";
+
+    const int ID_AUTO = 1;
+    const int ID_FAST = 2;
+    const int ID_SAFE = 3;
+    const int ID_CANCEL = 0;
+    SDL_MessageBoxButtonData buttons[4] = {
+        { 0, ID_AUTO, "Auto" },
+        { 0, ID_FAST, "Fast" },
+        { 0, ID_SAFE, "Compatibility" },
+        { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, ID_CANCEL, "Cancel" },
+    };
+
+    SDL_MessageBoxData data{};
+    data.flags = SDL_MESSAGEBOX_INFORMATION;
+    data.title = "Graphics Mode";
+    data.message = message.c_str();
+    data.numbuttons = 4;
+    data.buttons = buttons;
+
+    int buttonid = -1;
+    if (SDL_ShowMessageBox(&data, &buttonid) != 0) {
+        fprintf(stderr, "SDL_ShowMessageBox failed: %s\n", SDL_GetError());
+        return;
+    }
+
+    std::string chosen;
+    switch (buttonid) {
+        case ID_AUTO: chosen = "auto"; break;
+        case ID_FAST: chosen = "fast"; break;
+        case ID_SAFE: chosen = "safe"; break;
+        default: return;
+    }
+    if (chosen == current) {
+        return;
+    }
+
+    if (!write_graphics_mode(chosen)) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Graphics Mode",
+            "Could not save the setting.", nullptr);
+        return;
+    }
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Graphics Mode",
+        "Saved. The app will now restart to apply it.", nullptr);
+    request_app_restart_after_delay(800);
+}
 #endif
 
 void on_launcher_init(recompui::LauncherMenu *menu) {
@@ -787,6 +899,9 @@ void on_launcher_init(recompui::LauncherMenu *menu) {
     // Port Android: seleção do driver Vulkan (Turnip) direto no menu do jogo.
     game_options_menu->add_option("GPU Driver", []() {
         show_android_gpu_driver_menu();
+    });
+    game_options_menu->add_option("Graphics Mode", []() {
+        show_android_graphics_mode_menu();
     });
 #endif
     game_options_menu->set_width(30, recompui::Unit::Percent);
@@ -842,6 +957,9 @@ int main(int argc, char** argv) {
     if (!androidport::internal_files_dir().empty()) {
         SDL_setenv("HOME", androidport::internal_files_dir().c_str(), 1);
     }
+    // Shader path for the stock Qualcomm driver (read by plume when the
+    // Vulkan device is created). See show_android_graphics_mode_menu().
+    apply_graphics_mode_env();
 #else
     (void)argc;
     (void)argv;

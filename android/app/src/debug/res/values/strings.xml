@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debug build installs next to the official release (applicationIdSuffix). -->
+    <string name="app_name">DK64 Recomp (Revvl 8)</string>
+</resources>
